@@ -3,28 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Magical Pink Christmas</title>
+    <title>Pink Magic Christmas v3</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Space+Mono&display=swap');
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Space Mono', monospace; }
         #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
         
-        /* 还原图片中的 UI 风格 */
         .ui-panel { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); width: 90%; max-width: 450px; z-index: 100; }
-        .input-wrapper { display: flex; background: rgba(20, 20, 20, 0.8); border: 1px solid rgba(255, 215, 0, 0.4); padding: 4px; border-radius: 4px; box-shadow: 0 0 20px rgba(255, 105, 180, 0.2); }
+        .input-wrapper { display: flex; background: rgba(30, 0, 30, 0.7); border: 1px solid #ffd700; padding: 4px; border-radius: 4px; backdrop-filter: blur(5px); }
         input { flex: 1; background: transparent; border: none; color: #ffb6c1; outline: none; font-family: 'Space Mono'; font-size: 14px; padding: 12px; }
-        button { background: #ffd700; border: none; color: #000; padding: 0 20px; cursor: pointer; font-weight: bold; font-family: 'Space Mono'; transition: 0.3s; }
-        button:hover { background: #fff; box-shadow: 0 0 15px #ffd700; }
+        button { background: #ffd700; border: none; color: #000; padding: 0 20px; cursor: pointer; font-weight: bold; font-family: 'Space Mono'; }
         
-        .brightness-ctrl { position: absolute; top: 20px; left: 20px; color: #ffd700; font-size: 12px; letter-spacing: 2px; }
-        input[type=range] { width: 120px; accent-color: #ffd700; display: block; margin-top: 8px; }
+        .brightness-ctrl { position: absolute; top: 20px; left: 20px; color: #ffd700; font-size: 11px; letter-spacing: 2px; z-index: 200; background: rgba(0,0,0,0.5); padding: 10px; border-radius: 5px; }
+        input[type=range] { width: 120px; accent-color: #ffd700; display: block; margin-top: 8px; cursor: pointer; }
     </style>
 </head>
 <body>
 
     <div class="brightness-ctrl">
-        BRIGHTNESS
-        <input type="range" id="bright-range" min="0.5" max="4.0" step="0.1" value="2.5">
+        BRIGHTNESS CONTROL
+        <input type="range" id="bright-range" min="0.1" max="5.0" step="0.1" value="2.5">
     </div>
 
     <div id="canvas-container"></div>
@@ -32,7 +30,7 @@
     <div class="ui-panel">
         <div class="input-wrapper">
             <input type="text" id="wish-input" placeholder="WISH-INPUT-SPLUT..." maxlength="20">
-            <button onclick="sendWish()">发送</button>
+            <button onclick="sendWish()">SEND</button>
         </div>
     </div>
 
@@ -44,184 +42,166 @@
         import * as THREE from 'three';
 
         let scene, camera, renderer, clock;
-        let treeGroup, snowSystem, wishes = [];
+        let treeLayers = [], starParticles, snowSystem, wishes = [];
         let mouseX = 0, targetX = 0;
 
         function init() {
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(0, 3, 22);
+            camera.position.set(0, 3, 24);
 
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.setPixelRatio(window.devicePixelRatio);
             document.getElementById('canvas-container').appendChild(renderer.domElement);
 
             clock = new THREE.Clock();
-            treeGroup = new THREE.Group();
-            scene.add(treeGroup);
-
-            // 创建多层伞状结构（还原图中的厚实感）
-            createVolumetricTree();
-            createMagicStar();
+            
+            // 核心功能：创建粒子树
+            createLayeredTree();
+            // 核心功能：创建粉色粒子星团
+            createPinkStarParticles();
             createBackgroundSnow();
+            
             animate();
 
             // 交互：视角跟随
-            document.addEventListener('mousemove', (e) => {
-                targetX = (e.clientX - window.innerWidth / 2) * 0.001;
-            });
-            document.addEventListener('touchmove', (e) => {
-                targetX = (e.touches[0].clientX - window.innerWidth / 2) * 0.0015;
-            });
+            const handleMove = (x) => { targetX = (x - window.innerWidth / 2) * 0.0015; };
+            document.addEventListener('mousemove', (e) => handleMove(e.clientX));
+            document.addEventListener('touchmove', (e) => handleMove(e.touches[0].clientX));
         }
 
-        function createVolumetricTree() {
-            // 分5层创建，每层都是一个高密度的粒子群
-            const layerConfigs = [
-                { y: -5, r: 6.5, h: 4, count: 12000 },
-                { y: -2.5, r: 5.2, h: 3.5, count: 10000 },
-                { y: 0, r: 4.0, h: 3, count: 8000 },
-                { y: 2.2, r: 2.8, h: 2.5, count: 6000 },
-                { y: 4.2, r: 1.5, h: 2, count: 4000 }
+        function createLayeredTree() {
+            const configs = [
+                { y: -6, r: 7.5, h: 4.5, count: 15000 },
+                { y: -3, r: 6.0, h: 4.0, count: 12000 },
+                { y: 0.5, r: 4.5, h: 3.5, count: 9000 },
+                { y: 3.5, r: 3.0, h: 3.0, count: 7000 },
+                { y: 6.0, r: 1.5, h: 2.0, count: 4000 }
             ];
 
-            layerConfigs.forEach(cfg => {
+            configs.forEach(cfg => {
+                const geo = new THREE.BufferGeometry();
                 const pos = new Float32Array(cfg.count * 3);
-                const colors = new Float32Array(cfg.count * 3);
-                const sizes = new Float32Array(cfg.count);
+                const cols = new Float32Array(cfg.count * 3);
+                const colorCore = new THREE.Color(0xff1493); // 深粉
+                const colorEdge = new THREE.Color(0xffb6c1); // 浅粉
 
                 for (let i = 0; i < cfg.count; i++) {
                     const h = Math.random() * cfg.h;
-                    const r = (cfg.h - h) * (cfg.r / cfg.h) * Math.pow(Math.random(), 0.4);
-                    const angle = Math.random() * Math.PI * 2;
-
+                    const r = (cfg.h - h) * (cfg.r / cfg.h) * Math.pow(Math.random(), 0.5);
+                    const ang = Math.random() * Math.PI * 2;
                     const i3 = i * 3;
-                    pos[i3] = Math.cos(angle) * r;
+                    pos[i3] = Math.cos(ang) * r;
                     pos[i3+1] = h + cfg.y;
-                    pos[i3+2] = Math.sin(angle) * r;
+                    pos[i3+2] = Math.sin(ang) * r;
 
-                    // 粉金配色插值
-                    const color = new THREE.Color();
-                    color.setHSL(0.9, 0.8, 0.6 + Math.random() * 0.2); // 暖粉色
-                    if (Math.random() > 0.8) color.setHex(0xffd700); // 偶尔闪烁金色
-
-                    colors[i3] = color.r; colors[i3+1] = color.g; colors[i3+2] = color.b;
-                    sizes[i] = Math.random() * 3.0;
+                    const c = colorCore.clone().lerp(colorEdge, Math.random());
+                    cols[i3] = c.r; cols[i3+1] = c.g; cols[i3+2] = c.b;
                 }
-
-                const geo = new THREE.BufferGeometry();
                 geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-                geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+                geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
 
                 const mat = new THREE.PointsMaterial({
-                    size: 0.15,
-                    vertexColors: true,
-                    transparent: true,
-                    blending: THREE.AdditiveBlending, // 核心：让重叠部分更亮
-                    opacity: 0.6,
-                    depthWrite: false
+                    size: 0.12, vertexColors: true, transparent: true,
+                    blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.7
                 });
-
-                const points = new THREE.Points(geo, mat);
-                treeGroup.add(points);
+                const p = new THREE.Points(geo, mat);
+                scene.add(p);
+                treeLayers.push(p);
             });
         }
 
-        function createMagicStar() {
-            // 树顶五角星光团
-            const starGeo = new THREE.IcosahedronGeometry(0.8, 2);
-            const starMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 });
-            const star = new THREE.Mesh(starGeo, starMat);
-            star.position.y = 7.2;
+        function createPinkStarParticles() {
+            const count = 3500;
+            const geo = new THREE.BufferGeometry();
+            const pos = new Float32Array(count * 3);
+            const cols = new Float32Array(count * 3);
             
-            // 星芒光晕
-            const spriteMat = new THREE.SpriteMaterial({
-                color: 0xffb6c1,
-                blending: THREE.AdditiveBlending,
-                transparent: true,
-                opacity: 0.8
+            for (let i = 0; i < count; i++) {
+                // 星状算法：使用球坐标系扩散
+                const r = Math.pow(Math.random(), 2.0) * 1.5;
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(2 * Math.random() - 1);
+                
+                const i3 = i * 3;
+                pos[i3] = r * Math.sin(phi) * Math.cos(theta);
+                pos[i3+1] = r * Math.sin(phi) * Math.sin(theta) + 8.5; // 树尖位置
+                pos[i3+2] = r * Math.cos(phi);
+
+                // 纯粉色系粒子
+                cols[i3] = 1.0; 
+                cols[i3+1] = 0.4 + Math.random() * 0.4; // 暖粉
+                cols[i3+2] = 0.7;
+            }
+            geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+            geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+
+            const mat = new THREE.PointsMaterial({
+                size: 0.15, vertexColors: true, transparent: true,
+                blending: THREE.AdditiveBlending, depthWrite: false
             });
-            const glow = new THREE.Sprite(spriteMat);
-            glow.scale.set(5, 5, 1);
-            star.add(glow);
-            treeGroup.add(star);
+            starParticles = new THREE.Points(geo, mat);
+            scene.add(starParticles);
         }
 
         function createBackgroundSnow() {
-            const count = 2000;
+            const count = 1500;
+            const geo = new THREE.BufferGeometry();
             const pos = new Float32Array(count * 3);
             for(let i=0; i<count*3; i++) pos[i] = (Math.random()-0.5)*60;
-            const geo = new THREE.BufferGeometry();
             geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-            snowSystem = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.05, transparent: true, opacity: 0.4 }));
+            snowSystem = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.05, transparent: true, opacity: 0.3 }));
             scene.add(snowSystem);
         }
 
         window.sendWish = () => {
-            const val = document.getElementById('wish-input').value;
-            if(!val) return;
+            const input = document.getElementById('wish-input');
+            if(!input.value) return;
 
-            // 创建许愿粒子团
             const group = new THREE.Group();
-            const ball = new THREE.Mesh(
-                new THREE.SphereGeometry(0.3, 12, 12),
-                new THREE.MeshBasicMaterial({ color: 0xffffff, blending: THREE.AdditiveBlending })
-            );
+            const ball = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffffff, blending: THREE.AdditiveBlending }));
             group.add(ball);
             
-            // 增加拖尾效果
-            const trailGeo = new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(20*3), 3));
-            const trail = new THREE.Points(trailGeo, new THREE.PointsMaterial({ color: 0xff69b4, size: 0.1, transparent: true }));
-            group.add(trail);
-
-            group.position.set((Math.random()-0.5)*20, -12, (Math.random()-0.5)*10);
+            group.position.set((Math.random()-0.5)*15, -12, (Math.random()-0.5)*5);
             scene.add(group);
 
-            wishes.push({
-                obj: group,
-                start: group.position.clone(),
-                end: new THREE.Vector3(0, 7, 0),
-                progress: 0,
-                speed: 0.005 + Math.random() * 0.005
-            });
-            document.getElementById('wish-input').value = "";
+            wishes.push({ obj: group, start: group.position.clone(), end: new THREE.Vector3(0, 8.5, 0), p: 0 });
+            input.value = "";
         };
 
         function animate() {
             requestAnimationFrame(animate);
-            const elapsed = clock.getElapsedTime();
+            const time = clock.getElapsedTime();
 
-            // 整体跟随鼠标
+            // 1. 修复亮度控制：直接作用于材质透明度系数
+            const bVal = parseFloat(document.getElementById('bright-range').value);
+            
             mouseX += (targetX - mouseX) * 0.05;
-            treeGroup.rotation.y = mouseX + elapsed * 0.2;
 
-            // 亮度动态控制
-            const b = document.getElementById('bright-range').value;
-            treeGroup.children.forEach(child => {
-                if(child.material) child.material.opacity = (0.3 + Math.sin(elapsed * 2)*0.05) * b;
+            // 更新树体层
+            treeLayers.forEach((layer, idx) => {
+                layer.rotation.y = mouseX + time * (0.1 + idx * 0.02);
+                layer.material.opacity = (0.4 + Math.sin(time * 2) * 0.1) * (bVal / 2.5); // 关联滑块
             });
 
-            // 许愿飞行动画
+            // 更新粉色粒子星星
+            starParticles.rotation.y = -time * 0.5;
+            starParticles.rotation.z = time * 0.3;
+            starParticles.scale.setScalar(1 + Math.sin(time * 4) * 0.05); // 呼吸跳动效果
+            starParticles.material.opacity = (0.8 + Math.sin(time * 3) * 0.2) * (bVal / 2.5);
+
+            // 许愿轨迹
             for(let i = wishes.length-1; i>=0; i--) {
                 const w = wishes[i];
-                w.progress += w.speed;
-                // 缓动曲线
-                const t = 1 - Math.pow(1 - w.progress, 3); 
+                w.p += 0.008;
+                const t = 1 - Math.pow(1 - w.p, 3); 
                 w.obj.position.lerpVectors(w.start, w.end, t);
-                w.obj.position.x += Math.sin(w.progress * 10) * 0.2; // 优雅的弧线
-
-                if(w.progress >= 1) {
-                    scene.remove(w.obj);
-                    wishes.splice(i, 1);
-                    // 触碰树顶时树闪烁
-                    treeGroup.scale.setScalar(1.05);
-                    setTimeout(() => treeGroup.scale.setScalar(1.0), 100);
-                }
+                w.obj.position.x += Math.sin(w.p * 15) * 0.1;
+                if(w.p >= 1) { scene.remove(w.obj); wishes.splice(i, 1); }
             }
 
-            // 雪花飘落
-            snowSystem.rotation.y += 0.001;
+            // 雪花
             snowSystem.position.y -= 0.02;
             if(snowSystem.position.y < -20) snowSystem.position.y = 20;
 
