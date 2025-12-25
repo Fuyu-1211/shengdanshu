@@ -2,42 +2,43 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Luxury Christmas AI</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Merry Christmas - Pink Energy Tree</title>
     <style>
-        body { margin: 0; background: #000; color: white; font-family: sans-serif; overflow: hidden; }
+        @import url('https://fonts.googleapis.com/css2?family=Space+Mono&display=swap');
+        body { margin: 0; background: #050005; overflow: hidden; font-family: 'Space Mono', monospace; }
         #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-        #status-overlay {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.8); display: flex; flex-direction: column;
-            justify-content: center; align-items: center; z-index: 1000; transition: 0.5s;
-        }
-        .loading-text { color: #ffd700; font-size: 18px; margin-bottom: 20px; }
-        .skip-btn {
-            padding: 10px 20px; background: transparent; border: 1px solid #ffd700;
-            color: #ffd700; border-radius: 5px; cursor: pointer;
-        }
-        #video-preview {
-            position: absolute; bottom: 20px; right: 20px; width: 120px; height: 90px;
-            border: 1px solid #ffd700; border-radius: 8px; z-index: 10; transform: scaleX(-1);
-        }
+        
+        /* UI 层 */
+        .ui-panel { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); width: 90%; max-width: 400px; z-index: 100; text-align: center; }
+        .wish-input-group { display: flex; gap: 10px; background: rgba(255, 182, 193, 0.1); padding: 10px; border-radius: 12px; backdrop-filter: blur(10px); border: 1px solid rgba(255, 215, 0, 0.3); }
+        input { flex: 1; background: transparent; border: none; color: #ffb6c1; outline: none; font-family: 'Space Mono'; font-size: 16px; padding: 5px; }
+        button { background: transparent; border: 1px solid #ffd700; color: #ffd700; padding: 8px 15px; border-radius: 8px; cursor: pointer; font-family: 'Space Mono'; transition: 0.3s; }
+        button:hover { background: rgba(255, 215, 0, 0.2); }
+        
+        .brightness-ctrl { position: absolute; top: 20px; right: 20px; color: #ffd700; display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+        input[type=range] { width: 100px; accent-color: #ffd700; }
+        .hint { position: absolute; top: 20px; left: 20px; color: rgba(255, 215, 0, 0.5); font-size: 12px; pointer-events: none; }
     </style>
 </head>
 <body>
 
-    <div id="status-overlay">
-        <div class="loading-text" id="status">正在加载 AI 模型库...</div>
-        <button class="skip-btn" onclick="useManualMode()">跳过 AI，使用手动互动</button>
+    <div class="hint">移动鼠标或手指观察视角旋转</div>
+    
+    <div class="brightness-ctrl">
+        <label>Brightness</label>
+        <input type="range" id="bright-range" min="0.5" max="2.5" step="0.1" value="1.5">
     </div>
 
-    <video id="video-preview" autoplay playsinline muted></video>
     <div id="canvas-container"></div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/hand-pose-detection"></script>
-    
+    <div class="ui-panel">
+        <div class="wish-input-group">
+            <input type="text" id="wish-input" placeholder="Make a wish..." maxlength="20">
+            <button onclick="sendWish()">SEND</button>
+        </div>
+    </div>
+
     <script type="importmap">
         { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
     </script>
@@ -45,93 +46,188 @@
     <script type="module">
         import * as THREE from 'three';
 
-        let scene, camera, renderer, points;
-        const count = 12000;
-        let chaosPos = [], targetPos = [], lerpProgress = 1;
-        let isManual = false;
+        let scene, camera, renderer, treePoints, snowPoints, rings = [];
+        let mouseX = 0, mouseY = 0, targetX = 0, targetY = 0;
+        const wishes = [];
+        
+        // 核心配色
+        const COLORS = {
+            core: 0xff69b4,    // 暖粉色
+            glow: 0xffb6c1,    // 珊瑚粉
+            edge: 0xffffff,    // 白色
+            gold: 0xffd700     // 金色
+        };
 
-        // --- 1. 初始化 3D 场景 ---
-        function initScene() {
+        function init() {
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(0, 5, 20);
+            camera.position.set(0, 5, 25);
 
-            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
             document.getElementById('canvas-container').appendChild(renderer.domElement);
 
+            createTree();
+            createSnow();
+            createBaseRings();
+            animate();
+
+            // 交互监听
+            document.addEventListener('mousemove', (e) => {
+                targetX = (e.clientX - window.innerWidth/2) * 0.01;
+                targetY = (e.clientY - window.innerHeight/2) * 0.01;
+            });
+            document.addEventListener('touchmove', (e) => {
+                targetX = (e.touches[0].clientX - window.innerWidth/2) * 0.01;
+            });
+        }
+
+        function createTree() {
+            const count = 15000;
+            const pos = new Float32Array(count * 3);
+            const colors = new Float32Array(count * 3);
+            const sizes = new Float32Array(count);
+
+            const coreCol = new THREE.Color(COLORS.core);
+            const glowCol = new THREE.Color(COLORS.glow);
+
             for (let i = 0; i < count; i++) {
-                const r = 15 * Math.pow(Math.random(), 1/2);
-                const t = Math.random() * Math.PI * 2, p = Math.acos(2 * Math.random() - 1);
-                chaosPos.push(r * Math.sin(p) * Math.cos(t), r * Math.sin(p) * Math.sin(t), r * Math.cos(p));
-                const h = Math.random() * 12, rad = (12 - h) * 0.3, ang = Math.random() * Math.PI * 2;
-                targetPos.push(Math.cos(ang) * rad, h - 6, Math.sin(ang) * rad);
+                const h = Math.random() * 15;
+                const r = (15 - h) * 0.35 * Math.pow(Math.random(), 0.5);
+                const angle = Math.random() * Math.PI * 2;
+
+                const i3 = i * 3;
+                pos[i3] = Math.cos(angle) * r;
+                pos[i3+1] = h - 7;
+                pos[i3+2] = Math.sin(angle) * r;
+
+                // 颜色插值：核心粉色到边缘白色
+                const mix = Math.random();
+                const col = coreCol.clone().lerp(glowCol, mix);
+                colors[i3] = col.r; colors[i3+1] = col.g; colors[i3+2] = col.b;
+                sizes[i] = Math.random() * 0.12;
             }
 
             const geo = new THREE.BufferGeometry();
-            geo.setAttribute('position', new THREE.Float32BufferAttribute(targetPos, 3));
-            const mat = new THREE.PointsMaterial({ size: 0.07, color: 0xffd700, transparent: true, blending: THREE.AdditiveBlending });
-            points = new THREE.Points(geo, mat);
-            scene.add(points);
+            geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+            geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            
+            const mat = new THREE.PointsMaterial({
+                size: 0.08,
+                vertexColors: true,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                opacity: 0.8
+            });
 
-            animate();
+            treePoints = new THREE.Points(geo, mat);
+            scene.add(treePoints);
         }
+
+        function createSnow() {
+            const count = 2000;
+            const pos = new Float32Array(count * 3);
+            for(let i=0; i<count; i++) {
+                pos[i*3] = (Math.random()-0.5)*50;
+                pos[i*3+1] = Math.random()*40 - 10;
+                pos[i*3+2] = (Math.random()-0.5)*50;
+            }
+            const geo = new THREE.BufferGeometry();
+            geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+            snowPoints = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.05, transparent: true, opacity: 0.4 }));
+            scene.add(snowPoints);
+        }
+
+        function createBaseRings() {
+            for(let i=0; i<3; i++) {
+                const ringGeo = new THREE.TorusGeometry(5 + i*1.5, 0.02, 16, 100);
+                const ringMat = new THREE.MeshBasicMaterial({ color: COLORS.gold, transparent: true, opacity: 0.3 });
+                const ring = new THREE.Mesh(ringGeo, ringMat);
+                ring.rotation.x = Math.PI/2;
+                scene.add(ring);
+                rings.push(ring);
+            }
+        }
+
+        // 许愿功能逻辑
+        window.sendWish = () => {
+            const input = document.getElementById('wish-input');
+            if(!input.value) return;
+            
+            const wishBall = new THREE.Group();
+            const ballGeo = new THREE.SphereGeometry(0.2, 16, 16);
+            const ballMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, blending: THREE.AdditiveBlending });
+            const ball = new THREE.Mesh(ballGeo, ballMat);
+            wishBall.add(ball);
+
+            // 初始位置
+            wishBall.position.set((Math.random()-0.5)*10, -10, (Math.random()-0.5)*10);
+            scene.add(wishBall);
+
+            // 动画参数
+            const startTime = Date.now();
+            const duration = 2500;
+            const startPos = wishBall.position.clone();
+            const targetPos = new THREE.Vector3(0, 8, 0);
+
+            wishes.push({ mesh: wishBall, startPos, targetPos, startTime, duration });
+            input.value = "";
+        };
 
         function animate() {
             requestAnimationFrame(animate);
-            const pos = points.geometry.attributes.position.array;
-            for (let i = 0; i < count; i++) {
-                const i3 = i * 3;
-                pos[i3] = THREE.MathUtils.lerp(chaosPos[i3], targetPos[i3], lerpProgress);
-                pos[i3+1] = THREE.MathUtils.lerp(chaosPos[i3+1], targetPos[i3+1], lerpProgress);
-                pos[i3+2] = THREE.MathUtils.lerp(chaosPos[i3+2], targetPos[i3+2], lerpProgress);
+
+            // 视角的平滑跟随
+            mouseX += (targetX - mouseX) * 0.05;
+            mouseY += (targetY - mouseY) * 0.05;
+            treePoints.rotation.y = mouseX;
+            treePoints.rotation.x = mouseY * 0.2;
+
+            // 亮度调节
+            const b = document.getElementById('bright-range').value;
+            treePoints.material.opacity = b * 0.4;
+            treePoints.scale.set(1 + b*0.05, 1 + b*0.05, 1 + b*0.05);
+
+            // 雪花飘落
+            const snowPos = snowPoints.geometry.attributes.position.array;
+            for(let i=1; i<snowPos.length; i+=3) {
+                snowPos[i] -= 0.02;
+                if(snowPos[i] < -10) snowPos[i] = 30;
             }
-            points.geometry.attributes.position.needsUpdate = true;
-            points.rotation.y += 0.003;
+            snowPoints.geometry.attributes.position.needsUpdate = true;
+
+            // 许愿球飞行
+            const now = Date.now();
+            for(let i = wishes.length-1; i>=0; i--) {
+                const w = wishes[i];
+                const p = (now - w.startTime) / w.duration;
+                
+                if(p >= 1) {
+                    scene.remove(w.mesh);
+                    wishes.splice(i, 1);
+                    // 触碰反馈：树闪烁一下
+                    treePoints.material.opacity = 1.0;
+                    continue;
+                }
+
+                // 优雅的弧线 (Cubic Ease In-Out)
+                const t = p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+                w.mesh.position.lerpVectors(w.startPos, w.targetPos, t);
+                w.mesh.position.x += Math.sin(p * 10) * 0.5; // 轻微晃动
+                w.mesh.scale.setScalar(1 + Math.sin(p*Math.PI));
+            }
+
             renderer.render(scene, camera);
         }
 
-        // --- 2. AI 手势逻辑 ---
-        async function initAI() {
-            try {
-                const video = document.getElementById('video-preview');
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                video.srcObject = stream;
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
 
-                const detector = await handPoseDetection.createDetector(
-                    handPoseDetection.SupportedModels.MediaPipeHands, 
-                    { runtime: 'mediapipe', solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/hands' }
-                );
-
-                document.getElementById('status-overlay').style.opacity = '0';
-                setTimeout(() => document.getElementById('status-overlay').style.display = 'none', 500);
-
-                async function detect() {
-                    if(isManual) return;
-                    const hands = await detector.estimateHands(video);
-                    if (hands.length > 0) {
-                        const dist = Math.abs(hands[0].keypoints[4].x - hands[0].keypoints[20].x);
-                        lerpProgress = THREE.MathUtils.lerp(lerpProgress, dist > 80 ? 0 : 1, 0.2);
-                    }
-                    requestAnimationFrame(detect);
-                }
-                detect();
-            } catch (e) {
-                document.getElementById('status').innerText = "摄像头启动失败，请使用手动模式";
-            }
-        }
-
-        // --- 3. 手动模式切换 ---
-        window.useManualMode = () => {
-            isManual = true;
-            document.getElementById('status-overlay').style.display = 'none';
-            document.addEventListener('pointerdown', () => lerpProgress = 0);
-            document.addEventListener('pointerup', () => lerpProgress = 1);
-            alert("已进入手动模式：长按屏幕散开粒子，松开聚合成树");
-        };
-
-        initScene();
-        initAI();
+        init();
     </script>
 </body>
 </html>
