@@ -3,58 +3,41 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 互动圣诞粒子系统</title>
+    <title>Luxury Christmas AI</title>
     <style>
-        body { margin: 0; background: #000; color: white; font-family: 'Segoe UI', system-ui, sans-serif; overflow: hidden; }
+        body { margin: 0; background: #000; color: white; font-family: sans-serif; overflow: hidden; }
         #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-        
-        /* 简洁现代 UI 面板 */
-        #ui-panel {
-            position: absolute; top: 20px; left: 20px; z-index: 100;
-            background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(10px);
-            padding: 20px; border-radius: 15px; border: 1px solid rgba(255,255,255,0.1);
-            width: 220px;
+        #status-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); display: flex; flex-direction: column;
+            justify-content: center; align-items: center; z-index: 1000; transition: 0.5s;
         }
-        .control-group { margin-bottom: 15px; }
-        label { display: block; font-size: 12px; margin-bottom: 5px; color: #aaa; }
-        select, input { width: 100%; background: #222; border: 1px solid #444; color: white; padding: 8px; border-radius: 5px; }
-        
-        #video-container {
-            position: absolute; bottom: 20px; right: 20px; width: 160px; height: 120px;
-            border: 2px solid #ffd700; border-radius: 10px; overflow: hidden; transform: scaleX(-1);
+        .loading-text { color: #ffd700; font-size: 18px; margin-bottom: 20px; }
+        .skip-btn {
+            padding: 10px 20px; background: transparent; border: 1px solid #ffd700;
+            color: #ffd700; border-radius: 5px; cursor: pointer;
         }
-        #webcam-video { width: 100%; height: 100%; object-fit: cover; }
-        
-        #status { position: absolute; top: 20px; right: 20px; color: #ffd700; font-weight: bold; }
-        .btn-full { position: absolute; bottom: 20px; left: 20px; padding: 10px 20px; background: #fff; color: #000; border: none; border-radius: 5px; cursor: pointer; }
+        #video-preview {
+            position: absolute; bottom: 20px; right: 20px; width: 120px; height: 90px;
+            border: 1px solid #ffd700; border-radius: 8px; z-index: 10; transform: scaleX(-1);
+        }
     </style>
 </head>
 <body>
 
-    <div id="ui-panel">
-        <h3 style="margin-top:0; color: #ffd700;">Christmas AI</h3>
-        <div class="control-group">
-            <label>粒子形状</label>
-            <select id="shapeSelect">
-                <option value="circle">经典圆形</option>
-                <option value="star">五角星</option>
-                <option value="snowflake">冰晶雪花</option>
-            </select>
-        </div>
-        <div class="control-group">
-            <label>粒子颜色</label>
-            <input type="color" id="colorPicker" value="#ffd700">
-        </div>
-        <p style="font-size: 11px; color: #888;">提示：张开手掌扩散粒子，握拳聚合成树。移动手掌调整视角。</p >
+    <div id="status-overlay">
+        <div class="loading-text" id="status">正在加载 AI 模型库...</div>
+        <button class="skip-btn" onclick="useManualMode()">跳过 AI，使用手动互动</button>
     </div>
 
-    <div id="status">正在启动 AI 摄像头...</div>
-    <div id="video-container"><video id="webcam-video" autoplay playsinline></video></div>
-    <button class="btn-full" onclick="document.documentElement.requestFullscreen()">全屏控制</button>
+    <video id="video-preview" autoplay playsinline muted></video>
     <div id="canvas-container"></div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/hand-pose-detection"></script>
+    
     <script type="importmap">
         { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
     </script>
@@ -62,91 +45,36 @@
     <script type="module">
         import * as THREE from 'three';
 
-        let scene, camera, renderer, points, detector;
-        const count = 15000;
-        let chaosPos = [], targetPos = [];
-        let lerpProgress = 1; 
+        let scene, camera, renderer, points;
+        const count = 12000;
+        let chaosPos = [], targetPos = [], lerpProgress = 1;
+        let isManual = false;
 
-        async function initAI() {
-            const video = document.getElementById('webcam-video');
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-            video.srcObject = stream;
-
-            const model = handPoseDetection.SupportedModels.MediaPipeHands;
-            detector = await handPoseDetection.createDetector(model, {
-                runtime: 'mediapipe',
-                solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/hands'
-            });
-            document.getElementById('status').innerText = "AI 就绪：尝试张开/握紧手掌";
-            detectHand();
-        }
-
-        async function detectHand() {
-            const video = document.getElementById('webcam-video');
-            const hands = await detector.estimateHands(video);
-
-            if (hands.length > 0) {
-                const hand = hands[0];
-                // 计算食指尖和手掌根部的距离来判断张开/闭合
-                const thumb = hand.keypoints[4];
-                const pinky = hand.keypoints[20];
-                const dist = Math.sqrt(Math.pow(thumb.x - pinky.x, 2) + Math.pow(thumb.y - pinky.y, 2));
-                
-                // 阈值判断：张开手掌距离大
-                lerpProgress = THREE.MathUtils.lerp(lerpProgress, dist > 100 ? 0 : 1, 0.1);
-                
-                // 视角跟随手掌移动
-                const centerX = hand.keypoints[9].x; 
-                camera.position.x = THREE.MathUtils.lerp(camera.position.x, (centerX - 320) / 20, 0.1);
-            }
-            requestAnimationFrame(detectHand);
-        }
-
+        // --- 1. 初始化 3D 场景 ---
         function initScene() {
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
             camera.position.set(0, 5, 20);
 
-            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.getElementById('canvas-container').appendChild(renderer.domElement);
 
             for (let i = 0; i < count; i++) {
                 const r = 15 * Math.pow(Math.random(), 1/2);
-                const t = Math.random() * Math.PI * 2;
-                const p = Math.acos(2 * Math.random() - 1);
+                const t = Math.random() * Math.PI * 2, p = Math.acos(2 * Math.random() - 1);
                 chaosPos.push(r * Math.sin(p) * Math.cos(t), r * Math.sin(p) * Math.sin(t), r * Math.cos(p));
-
-                const h = Math.random() * 12;
-                const rad = (12 - h) * 0.3;
-                const ang = Math.random() * Math.PI * 2;
+                const h = Math.random() * 12, rad = (12 - h) * 0.3, ang = Math.random() * Math.PI * 2;
                 targetPos.push(Math.cos(ang) * rad, h - 6, Math.sin(ang) * rad);
             }
 
             const geo = new THREE.BufferGeometry();
             geo.setAttribute('position', new THREE.Float32BufferAttribute(targetPos, 3));
-            
-            const mat = new THREE.PointsMaterial({
-                size: 0.08,
-                color: 0xffd700,
-                transparent: true,
-                blending: THREE.AdditiveBlending,
-                depthWrite: false
-            });
-
+            const mat = new THREE.PointsMaterial({ size: 0.07, color: 0xffd700, transparent: true, blending: THREE.AdditiveBlending });
             points = new THREE.Points(geo, mat);
             scene.add(points);
 
-            // UI 交互绑定
-            document.getElementById('colorPicker').addEventListener('input', (e) => {
-                mat.color.set(e.target.value);
-            });
-            
-            window.addEventListener('resize', () => {
-                camera.aspect = window.innerWidth / window.innerHeight;
-                camera.updateProjectionMatrix();
-                renderer.setSize(window.innerWidth, window.innerHeight);
-            });
+            animate();
         }
 
         function animate() {
@@ -159,12 +87,50 @@
                 pos[i3+2] = THREE.MathUtils.lerp(chaosPos[i3+2], targetPos[i3+2], lerpProgress);
             }
             points.geometry.attributes.position.needsUpdate = true;
-            points.rotation.y += 0.005;
+            points.rotation.y += 0.003;
             renderer.render(scene, camera);
         }
 
+        // --- 2. AI 手势逻辑 ---
+        async function initAI() {
+            try {
+                const video = document.getElementById('video-preview');
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+
+                const detector = await handPoseDetection.createDetector(
+                    handPoseDetection.SupportedModels.MediaPipeHands, 
+                    { runtime: 'mediapipe', solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/hands' }
+                );
+
+                document.getElementById('status-overlay').style.opacity = '0';
+                setTimeout(() => document.getElementById('status-overlay').style.display = 'none', 500);
+
+                async function detect() {
+                    if(isManual) return;
+                    const hands = await detector.estimateHands(video);
+                    if (hands.length > 0) {
+                        const dist = Math.abs(hands[0].keypoints[4].x - hands[0].keypoints[20].x);
+                        lerpProgress = THREE.MathUtils.lerp(lerpProgress, dist > 80 ? 0 : 1, 0.2);
+                    }
+                    requestAnimationFrame(detect);
+                }
+                detect();
+            } catch (e) {
+                document.getElementById('status').innerText = "摄像头启动失败，请使用手动模式";
+            }
+        }
+
+        // --- 3. 手动模式切换 ---
+        window.useManualMode = () => {
+            isManual = true;
+            document.getElementById('status-overlay').style.display = 'none';
+            document.addEventListener('pointerdown', () => lerpProgress = 0);
+            document.addEventListener('pointerup', () => lerpProgress = 1);
+            alert("已进入手动模式：长按屏幕散开粒子，松开聚合成树");
+        };
+
         initScene();
-        animate();
         initAI();
     </script>
 </body>
