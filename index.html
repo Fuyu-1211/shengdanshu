@@ -3,36 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pink Magic Christmas</title>
+    <title>Magical Pink Christmas</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Space+Mono&display=swap');
-        body { margin: 0; background: #020002; overflow: hidden; font-family: 'Space Mono', monospace; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Space Mono', monospace; }
         #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
         
-        /* UI 设计：极简电影感 */
-        .ui-panel { position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%); width: 320px; z-index: 100; }
-        .wish-input-group { display: flex; background: rgba(255, 105, 180, 0.05); padding: 5px; border-radius: 4px; border-bottom: 1px solid rgba(255, 215, 0, 0.5); }
-        input { flex: 1; background: transparent; border: none; color: #ffb6c1; outline: none; font-family: 'Space Mono'; font-size: 14px; padding: 10px; }
-        button { background: #ffd700; border: none; color: #222; padding: 0 15px; cursor: pointer; font-weight: bold; font-family: 'Space Mono'; transition: 0.3s; margin-left: 5px; }
+        /* 还原图片中的 UI 风格 */
+        .ui-panel { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); width: 90%; max-width: 450px; z-index: 100; }
+        .input-wrapper { display: flex; background: rgba(20, 20, 20, 0.8); border: 1px solid rgba(255, 215, 0, 0.4); padding: 4px; border-radius: 4px; box-shadow: 0 0 20px rgba(255, 105, 180, 0.2); }
+        input { flex: 1; background: transparent; border: none; color: #ffb6c1; outline: none; font-family: 'Space Mono'; font-size: 14px; padding: 12px; }
+        button { background: #ffd700; border: none; color: #000; padding: 0 20px; cursor: pointer; font-weight: bold; font-family: 'Space Mono'; transition: 0.3s; }
         button:hover { background: #fff; box-shadow: 0 0 15px #ffd700; }
         
-        .controls { position: absolute; top: 20px; left: 20px; color: rgba(255, 215, 0, 0.8); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
-        .brightness-slider { margin-top: 10px; width: 100px; accent-color: #ffd700; display: block; opacity: 0.6; }
+        .brightness-ctrl { position: absolute; top: 20px; left: 20px; color: #ffd700; font-size: 12px; letter-spacing: 2px; }
+        input[type=range] { width: 120px; accent-color: #ffd700; display: block; margin-top: 8px; }
     </style>
 </head>
 <body>
 
-    <div class="controls">
-        Brightness
-        <input type="range" id="bright-range" min="0.5" max="3" step="0.1" value="1.8" class="brightness-slider">
+    <div class="brightness-ctrl">
+        BRIGHTNESS
+        <input type="range" id="bright-range" min="0.5" max="4.0" step="0.1" value="2.5">
     </div>
 
     <div id="canvas-container"></div>
 
     <div class="ui-panel">
-        <div class="wish-input-group">
+        <div class="input-wrapper">
             <input type="text" id="wish-input" placeholder="WISH-INPUT-SPLUT..." maxlength="20">
-            <button onclick="sendWish()">SEND</button>
+            <button onclick="sendWish()">发送</button>
         </div>
     </div>
 
@@ -44,20 +44,13 @@
         import * as THREE from 'three';
 
         let scene, camera, renderer, clock;
-        let treeGroup, snowParticles, wishes = [];
+        let treeGroup, snowSystem, wishes = [];
         let mouseX = 0, targetX = 0;
-
-        const CONFIG = {
-            count: 35000,
-            coreColor: 0xff69b4,
-            glowColor: 0xffb6c1,
-            goldColor: 0xffd700
-        };
 
         function init() {
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(0, 2, 22);
+            camera.position.set(0, 3, 22);
 
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -68,46 +61,53 @@
             treeGroup = new THREE.Group();
             scene.add(treeGroup);
 
-            createLayeredTree();
-            createStarTop();
-            createSnow();
+            // 创建多层伞状结构（还原图中的厚实感）
+            createVolumetricTree();
+            createMagicStar();
+            createBackgroundSnow();
             animate();
 
-            // 鼠标移动跟随逻辑
+            // 交互：视角跟随
             document.addEventListener('mousemove', (e) => {
-                targetX = (e.clientX - window.innerWidth / 2) * 0.0008;
+                targetX = (e.clientX - window.innerWidth / 2) * 0.001;
             });
             document.addEventListener('touchmove', (e) => {
-                targetX = (e.touches[0].clientX - window.innerWidth / 2) * 0.001;
+                targetX = (e.touches[0].clientX - window.innerWidth / 2) * 0.0015;
             });
         }
 
-        // 创建分层圣诞树 (根据图片增加层叠效果)
-        function createLayeredTree() {
-            const layers = 5; 
-            for (let l = 0; l < layers; l++) {
-                const count = Math.floor(CONFIG.count / layers);
-                const pos = new Float32Array(count * 3);
-                const sizes = new Float32Array(count);
-                const colors = new Float32Array(count * 3);
-                
-                const layerHeight = 3.5;
-                const yOffset = l * 2.5 - 6;
+        function createVolumetricTree() {
+            // 分5层创建，每层都是一个高密度的粒子群
+            const layerConfigs = [
+                { y: -5, r: 6.5, h: 4, count: 12000 },
+                { y: -2.5, r: 5.2, h: 3.5, count: 10000 },
+                { y: 0, r: 4.0, h: 3, count: 8000 },
+                { y: 2.2, r: 2.8, h: 2.5, count: 6000 },
+                { y: 4.2, r: 1.5, h: 2, count: 4000 }
+            ];
 
-                for (let i = 0; i < count; i++) {
-                    const h = Math.random() * layerHeight;
-                    // 核心逻辑：层叠裙摆形状
-                    const r = (layerHeight - h) * (1.2 + l * 0.4) * Math.pow(Math.random(), 0.6);
+            layerConfigs.forEach(cfg => {
+                const pos = new Float32Array(cfg.count * 3);
+                const colors = new Float32Array(cfg.count * 3);
+                const sizes = new Float32Array(cfg.count);
+
+                for (let i = 0; i < cfg.count; i++) {
+                    const h = Math.random() * cfg.h;
+                    const r = (cfg.h - h) * (cfg.r / cfg.h) * Math.pow(Math.random(), 0.4);
                     const angle = Math.random() * Math.PI * 2;
 
                     const i3 = i * 3;
                     pos[i3] = Math.cos(angle) * r;
-                    pos[i3+1] = h + yOffset;
+                    pos[i3+1] = h + cfg.y;
                     pos[i3+2] = Math.sin(angle) * r;
 
-                    const col = new THREE.Color(l % 2 === 0 ? CONFIG.coreColor : CONFIG.glowColor);
-                    colors[i3] = col.r; colors[i3+1] = col.g; colors[i3+2] = col.b;
-                    sizes[i] = Math.random() * 2;
+                    // 粉金配色插值
+                    const color = new THREE.Color();
+                    color.setHSL(0.9, 0.8, 0.6 + Math.random() * 0.2); // 暖粉色
+                    if (Math.random() > 0.8) color.setHex(0xffd700); // 偶尔闪烁金色
+
+                    colors[i3] = color.r; colors[i3+1] = color.g; colors[i3+2] = color.b;
+                    sizes[i] = Math.random() * 3.0;
                 }
 
                 const geo = new THREE.BufferGeometry();
@@ -115,123 +115,125 @@
                 geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
                 const mat = new THREE.PointsMaterial({
-                    size: 0.12,
+                    size: 0.15,
                     vertexColors: true,
                     transparent: true,
-                    blending: THREE.AdditiveBlending,
-                    opacity: 0.7,
+                    blending: THREE.AdditiveBlending, // 核心：让重叠部分更亮
+                    opacity: 0.6,
                     depthWrite: false
                 });
 
-                const p = new THREE.Points(geo, mat);
-                treeGroup.add(p);
-            }
+                const points = new THREE.Points(geo, mat);
+                treeGroup.add(points);
+            });
         }
 
-        // 树顶发光星
-        function createStarTop() {
-            const starGeo = new THREE.SphereGeometry(0.8, 24, 24);
-            const starMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 });
+        function createMagicStar() {
+            // 树顶五角星光团
+            const starGeo = new THREE.IcosahedronGeometry(0.8, 2);
+            const starMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 });
             const star = new THREE.Mesh(starGeo, starMat);
-            star.position.y = 8;
+            star.position.y = 7.2;
             
-            // 增加星状光晕
+            // 星芒光晕
             const spriteMat = new THREE.SpriteMaterial({
-                color: CONFIG.glowColor,
+                color: 0xffb6c1,
                 blending: THREE.AdditiveBlending,
                 transparent: true,
-                opacity: 0.5
+                opacity: 0.8
             });
-            const sprite = new THREE.Sprite(spriteMat);
-            sprite.scale.set(4, 4, 1);
-            star.add(sprite);
-            
+            const glow = new THREE.Sprite(spriteMat);
+            glow.scale.set(5, 5, 1);
+            star.add(glow);
             treeGroup.add(star);
         }
 
-        function createSnow() {
-            const count = 1500;
+        function createBackgroundSnow() {
+            const count = 2000;
             const pos = new Float32Array(count * 3);
             for(let i=0; i<count*3; i++) pos[i] = (Math.random()-0.5)*60;
             const geo = new THREE.BufferGeometry();
             geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-            snowParticles = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.04, transparent: true, opacity: 0.3 }));
-            scene.add(snowParticles);
+            snowSystem = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.05, transparent: true, opacity: 0.4 }));
+            scene.add(snowSystem);
         }
 
-        // 许愿功能
         window.sendWish = () => {
-            const input = document.getElementById('wish-input');
-            if(!input.value) return;
+            const val = document.getElementById('wish-input').value;
+            if(!val) return;
 
+            // 创建许愿粒子团
             const group = new THREE.Group();
-            const trail = new THREE.Points(
-                new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(30*3), 3)),
-                new THREE.PointsMaterial({ color: 0xffffff, size: 0.08, transparent: true, blending: THREE.AdditiveBlending })
+            const ball = new THREE.Mesh(
+                new THREE.SphereGeometry(0.3, 12, 12),
+                new THREE.MeshBasicMaterial({ color: 0xffffff, blending: THREE.AdditiveBlending })
             );
-            group.add(trail);
+            group.add(ball);
             
-            group.position.set((Math.random()-0.5)*15, -12, (Math.random()-0.5)*10);
+            // 增加拖尾效果
+            const trailGeo = new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(20*3), 3));
+            const trail = new THREE.Points(trailGeo, new THREE.PointsMaterial({ color: 0xff69b4, size: 0.1, transparent: true }));
+            group.add(trail);
+
+            group.position.set((Math.random()-0.5)*20, -12, (Math.random()-0.5)*10);
             scene.add(group);
 
             wishes.push({
                 obj: group,
                 start: group.position.clone(),
-                end: new THREE.Vector3(0, 8, 0),
-                time: 0,
-                duration: 2.5 + Math.random()
+                end: new THREE.Vector3(0, 7, 0),
+                progress: 0,
+                speed: 0.005 + Math.random() * 0.005
             });
-            input.value = "";
+            document.getElementById('wish-input').value = "";
         };
 
         function animate() {
             requestAnimationFrame(animate);
-            const delta = clock.getDelta();
             const elapsed = clock.getElapsedTime();
 
-            // 平滑旋转
+            // 整体跟随鼠标
             mouseX += (targetX - mouseX) * 0.05;
-            treeGroup.rotation.y = mouseX + elapsed * 0.1;
-            treeGroup.position.y = Math.sin(elapsed) * 0.1; // 轻微呼吸浮动
+            treeGroup.rotation.y = mouseX + elapsed * 0.2;
 
-            // 亮度与缩放
+            // 亮度动态控制
             const b = document.getElementById('bright-range').value;
             treeGroup.children.forEach(child => {
-                if(child.material) child.material.opacity = b * 0.35;
+                if(child.material) child.material.opacity = (0.3 + Math.sin(elapsed * 2)*0.05) * b;
             });
 
-            // 雪花
-            snowParticles.position.y -= 0.03;
-            if(snowParticles.position.y < -20) snowParticles.position.y = 20;
-
-            // 许愿球曲线飞行 (缓动曲线增强电影感)
+            // 许愿飞行动画
             for(let i = wishes.length-1; i>=0; i--) {
                 const w = wishes[i];
-                w.time += delta / w.duration;
-                
-                if(w.time >= 1) {
+                w.progress += w.speed;
+                // 缓动曲线
+                const t = 1 - Math.pow(1 - w.progress, 3); 
+                w.obj.position.lerpVectors(w.start, w.end, t);
+                w.obj.position.x += Math.sin(w.progress * 10) * 0.2; // 优雅的弧线
+
+                if(w.progress >= 1) {
                     scene.remove(w.obj);
                     wishes.splice(i, 1);
-                    continue;
+                    // 触碰树顶时树闪烁
+                    treeGroup.scale.setScalar(1.05);
+                    setTimeout(() => treeGroup.scale.setScalar(1.0), 100);
                 }
-
-                // Cubic Out 缓动
-                const t = 1 - Math.pow(1 - w.time, 3);
-                w.obj.position.lerpVectors(w.start, w.end, t);
-                w.obj.position.x += Math.sin(w.time * 6) * 1.5; // 弧线摆动
-                w.obj.scale.setScalar(Math.sin(w.time * Math.PI) * 2);
             }
+
+            // 雪花飘落
+            snowSystem.rotation.y += 0.001;
+            snowSystem.position.y -= 0.02;
+            if(snowSystem.position.y < -20) snowSystem.position.y = 20;
 
             renderer.render(scene, camera);
         }
 
+        init();
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
-
-        init();
     </script>
 </body>
 </html>
